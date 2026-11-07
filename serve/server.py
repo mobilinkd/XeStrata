@@ -6047,6 +6047,13 @@ def structured_chunks(chunks, validator):
                 yield chunk if progress else None
         result = openai_collect(buffered)
         choice = result["choices"][0]
+        if choice.get("finish_reason") == "tool_calls":
+            # a tool call is not an answer: the schema is for the reply that follows the tool's result, and the model
+            # may not have written one yet (with_tools says so in the directive).  Pass the turn through as the model
+            # wrote it rather than failing a call for not being JSON.
+            for chunk in buffered:
+                yield chunk
+            return
         content = validated_json(choice["message"]["content"], validator, choice["finish_reason"])
         # logprobs: the entries spell what the model wrote, which is replaced here with the canonical JSON;
         # _structured_logprobs gives back the form the tokens spell, or None
@@ -7439,9 +7446,8 @@ def make_handler(svc: Service):
             tools, choice = allowed_tools(req.get("tool_choice"), tools)   # the tools it lists, and its mode
             force = forced_call(choice, tools,                      # a bad value is a 400 before anything is sent
                                 getattr(svc.template, "call_form", "qwen"))
-            messages, validator = prepare_format(req.get("response_format"), messages)
-            if validator is not None and (tools or req.get("strata_mcp")):
-                raise ValueError("structured response_format with tools/MCP is not supported")
+            has_tools = bool(tools or req.get("strata_mcp"))
+            messages, validator = prepare_format(req.get("response_format"), messages, with_tools=has_tools)
             svc.load()
             max_req = max_new = int(req.get("max_completion_tokens") or req.get("max_tokens") or 0)   # 0/-1: the rest
             if top_logprobs(req) is not None and batch_slots_on(svc.engine) and max_req != 1:
@@ -7497,7 +7503,8 @@ def make_handler(svc: Service):
             form = getattr(svc.template, "call_form", "qwen")
             # the engine writes the answer, or a strict tool's call, under its schema when it can (structured.py)
             strict, patterns = constrained_tools(req.get("tools"))
-            svc.attach_grammar(req, answer_grammar(req.get("response_format"), thinking) if validator is not None
+            svc.attach_grammar(req, (None if has_tools else answer_grammar(req.get("response_format"), thinking))
+                               if validator is not None
                                else tool_grammar(tools, strict, patterns, thinking, form))
             svc.check_strict(req, tools, strict)
             _debug_req("openai", req, messages, tools, max_new, thinking, len(ids))
