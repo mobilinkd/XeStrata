@@ -35,6 +35,8 @@ public:
     /// The kept tokens kept[0..n) (the window's picks): the drafts are rolled back, these accepted (up to an
     /// end-of-turn token).  False when one is refused - the masks should have made that impossible.
     bool commit(const int32_t* kept, int n);
+    /// The grammar has accepted its end: nothing more follows it, so the reply ends here.
+    bool done() const;
     void stop();
 
 private:

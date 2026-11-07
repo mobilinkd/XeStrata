@@ -12487,11 +12487,16 @@ int main(int argc, char** argv) {
                 }
                 int a = 0;
                 while (a < T - 1 && window[(size_t) a + 1] == outv[(size_t) a]) ++a;
+                bool grammar_done = false;
                 if (grammar.active() && !grammar.commit(outv.data(), a + 1)) {   // the masks made this impossible
                     std::fprintf(stderr, "strata serve: the grammar refused a token its mask allowed: the rest of this "
                                          "reply is not constrained\n");
                     grammar.stop();
                     if (!ver.set_allowed(nullptr, 0, err)) { std::printf("ERR %s\n", err.c_str()); return 1; }
+                } else if (grammar.active() && grammar.done()) {
+                    // the object is complete: end the reply here.  Without this the window goes on with all-ones masks
+                    // (fill() allows anything once terminated) and the model free-runs past the JSON it just closed.
+                    grammar_done = true;
                 }
                 if (from_sfx) { ++sfx_windows; sfx_drafts += T - 1; sfx_ok += a; }
                 if (chain_n > 0) { ++chain_windows; chain_drafts += chain_n; chain_ok += std::max(0, a - (T_mtp - 1)); }
@@ -12608,7 +12613,7 @@ int main(int argc, char** argv) {
                 else if (timed_round && !eos)   // a chained window: its MTP part, its chain, its cost
                     policy.observe_chain(T_mtp, chain_n, a, cm,
                                          std::chrono::duration<double, std::milli>(Clock::now() - round0).count());
-                if (eos) { finish = "stop"; break; }
+                if (eos || grammar_done) { finish = "stop"; break; }
                 if (stop_req.load()) { finish = "cancel"; break; }
                 x = outv[(size_t) a];
                 p += a + 1;

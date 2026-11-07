@@ -180,6 +180,15 @@ bool Grammar::commit(const int32_t* kept, int n) {
     return true;
 }
 
+bool Grammar::done() const {
+    if (impl_ == nullptr) return false;
+    try {
+        return impl_->m->IsTerminated();
+    } catch (...) {
+        return false;
+    }
+}
+
 void Grammar::stop() { impl_.reset(); }
 
 #else
@@ -194,6 +203,7 @@ bool Grammar::start(const std::string&, int, const std::vector<int32_t>&, std::s
 }
 bool Grammar::fill(const int32_t*, int, uint32_t*) { return true; }
 bool Grammar::commit(const int32_t*, int) { return true; }
+bool Grammar::done() const { return false; }
 void Grammar::stop() {}
 
 #endif
